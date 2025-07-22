@@ -1,0 +1,229 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Farmacia YOFI Inventario</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { font-family: Arial; background: #f5f5f5; padding: 20px; }
+    h1 { color: green; text-align: center; }
+    .contenedor, .busqueda-edicion { display: flex; flex-wrap: wrap; gap: 20px; margin-bottom: 20px; }
+    .formulario, .buscador-editor { background: #fff; padding: 15px; border-radius: 8px; flex: 1 1 300px; box-shadow: 0 0 5px #ccc; }
+    input, button { padding: 8px; margin: 5px 0; width: 100%; box-sizing: border-box; }
+    table { width: 100%; margin-top: 20px; border-collapse: collapse; background: #fff; }
+    th, td { border: 1px solid #ccc; padding: 8px; text-align: center; font-size: 14px; }
+    th { background: #d0f0d0; }
+    .alerta-stock-verde { background-color: #d4edda; }
+    .alerta-stock-amarillo { background-color: #fff5cc; }
+    .alerta-stock-rojo { background-color: #ffcccc; }
+    .alerta-roja { background-color: #ffcccc; }
+    .alerta-amarilla { background-color: #fff5cc; }
+    .alerta-verde { background-color: #d4edda; }
+  </style>
+</head>
+<body>
+<h1>FARMACIA YOFI INVENTARIO</h1>
+
+<div class="contenedor">
+  <div class="formulario">
+    <h3>Agregar Producto</h3>
+    <input type="text" id="nuevoProducto" placeholder="Producto">
+    <input type="text" id="nuevoLaboratorio" placeholder="Laboratorio">
+    <input type="number" id="nuevoPrecio" placeholder="Precio">
+    <input type="number" id="nuevoStock" placeholder="Stock">
+    <input type="date" id="nuevaFecha">
+    <button onclick="agregarProducto()">Agregar</button>
+  </div>
+</div>
+
+<div class="busqueda-edicion">
+  <div class="buscador-editor">
+    <h3>Buscar Producto</h3>
+    <input type="text" id="buscarProducto" placeholder="Producto">
+    <input type="text" id="buscarLaboratorio" placeholder="Laboratorio">
+    <button onclick="buscarProducto()">Buscar</button>
+  </div>
+  <div class="buscador-editor">
+    <h3>Editar Producto</h3>
+    <input type="text" id="editarProducto" placeholder="Producto">
+    <input type="text" id="editarLaboratorio" placeholder="Laboratorio">
+    <input type="number" id="editarPrecio" placeholder="Precio">
+    <input type="number" id="editarStock" placeholder="Stock">
+    <input type="date" id="editarFecha">
+    <button onclick="establecerEdicion()">Establecer</button>
+    <button onclick="eliminarProducto()">Eliminar Producto</button>
+  </div>
+</div>
+
+<div>
+  <button onclick="exportarStock()">Exportar Stock</button>
+  <button onclick="exportarVencimiento()">Exportar Fecha de Vencimiento</button>
+</div>
+
+<table id="tabla">
+  <thead>
+    <tr>
+      <th>Producto</th>
+      <th>Laboratorio</th>
+      <th>Precio</th>
+      <th>Stock</th>
+      <th>Fecha Vencimiento</th>
+      <th>Alerta Stock</th>
+      <th>Alerta Vencimiento</th>
+    </tr>
+  </thead>
+  <tbody></tbody>
+</table>
+
+<script>
+let editIndex = -1;
+
+function guardarDatos(data) {
+  localStorage.setItem('productosYOFI', JSON.stringify(data));
+}
+
+function cargarDatos() {
+  const data = JSON.parse(localStorage.getItem('productosYOFI')) || [];
+  const tbody = document.querySelector("#tabla tbody");
+  tbody.innerHTML = "";
+  const hoy = new Date();
+
+  data.forEach((item, i) => {
+    const row = document.createElement("tr");
+    const fechaV = new Date(item.fecha);
+    const meses = (fechaV - hoy) / (1000 * 60 * 60 * 24) / 30;
+
+    let alertaS = '';
+    if (item.stock < 5) {
+      row.classList.add("alerta-stock-rojo");
+      alertaS = '⚠️ <5';
+    } else if (item.stock < 10) {
+      row.classList.add("alerta-stock-amarillo");
+      alertaS = '⚠️ <10';
+    } else if (item.stock < 30) {
+      row.classList.add("alerta-stock-verde");
+      alertaS = '⚠️ <30';
+    }
+
+    let alertaV = '';
+    if (meses < 1) {
+      row.classList.add("alerta-roja");
+      alertaV = '⚠️ <1 mes';
+    } else if (meses < 2) {
+      row.classList.add("alerta-amarilla");
+      alertaV = '⚠️ 1-2 meses';
+    } else if (meses < 3) {
+      row.classList.add("alerta-verde");
+      alertaV = '⚠️ 2-3 meses';
+    }
+
+    row.innerHTML = `
+      <td>${item.producto}</td>
+      <td>${item.laboratorio}</td>
+      <td>${item.precio}</td>
+      <td>${item.stock}</td>
+      <td>${item.fecha}</td>
+      <td>${alertaS}</td>
+      <td>${alertaV}</td>
+    `;
+    tbody.appendChild(row);
+  });
+}
+
+function agregarProducto() {
+  const producto = document.getElementById("nuevoProducto").value;
+  const laboratorio = document.getElementById("nuevoLaboratorio").value;
+  const precio = parseFloat(document.getElementById("nuevoPrecio").value);
+  const stock = parseInt(document.getElementById("nuevoStock").value);
+  const fecha = document.getElementById("nuevaFecha").value;
+  if (!producto || !laboratorio || isNaN(precio) || isNaN(stock) || !fecha) return alert("Completa todos los campos");
+  const data = JSON.parse(localStorage.getItem('productosYOFI')) || [];
+  data.push({ producto, laboratorio, precio, stock, fecha });
+  guardarDatos(data);
+  cargarDatos();
+  document.querySelectorAll(".formulario input").forEach(i => i.value = "");
+}
+
+function buscarProducto() {
+  const prod = document.getElementById("buscarProducto").value.toLowerCase();
+  const lab = document.getElementById("buscarLaboratorio").value.toLowerCase();
+  const data = JSON.parse(localStorage.getItem('productosYOFI')) || [];
+  const idx = data.findIndex(item =>
+    item.producto.toLowerCase() === prod && item.laboratorio.toLowerCase() === lab
+  );
+  if (idx === -1) return alert("No encontrado");
+  editIndex = idx;
+  const item = data[idx];
+  document.getElementById("editarProducto").value = item.producto;
+  document.getElementById("editarLaboratorio").value = item.laboratorio;
+  document.getElementById("editarPrecio").value = item.precio;
+  document.getElementById("editarStock").value = item.stock;
+  document.getElementById("editarFecha").value = item.fecha;
+}
+
+function establecerEdicion() {
+  if (editIndex === -1) return alert("Primero busca un producto");
+  const data = JSON.parse(localStorage.getItem('productosYOFI'));
+  data[editIndex] = {
+    producto: document.getElementById("editarProducto").value,
+    laboratorio: document.getElementById("editarLaboratorio").value,
+    precio: parseFloat(document.getElementById("editarPrecio").value),
+    stock: parseInt(document.getElementById("editarStock").value),
+    fecha: document.getElementById("editarFecha").value
+  };
+  guardarDatos(data);
+  editIndex = -1;
+  cargarDatos();
+}
+
+function eliminarProducto() {
+  if (editIndex === -1) return alert("Primero busca un producto");
+  const data = JSON.parse(localStorage.getItem('productosYOFI'));
+  if (confirm("¿Eliminar este producto?")) {
+    data.splice(editIndex, 1);
+    guardarDatos(data);
+    editIndex = -1;
+    cargarDatos();
+    document.querySelectorAll(".buscador-editor input").forEach(i => i.value = "");
+  }
+}
+
+function exportarStock() {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  doc.setFontSize(12);
+  doc.text("Productos con Stock Bajo", 10, 10);
+  let headers = ["Producto", "Laboratorio", "Precio", "Stock"];
+  let rows = [];
+  JSON.parse(localStorage.getItem('productosYOFI') || '[]')
+    .filter(p => p.stock < 30)
+    .sort((a, b) => a.stock - b.stock)
+    .forEach(p => rows.push([p.producto, p.laboratorio, p.precio.toString(), p.stock.toString()]));
+  doc.autoTable({ head: [headers], body: rows, startY: 20, theme: 'grid' });
+  doc.save("stock_bajo.pdf");
+}
+
+function exportarVencimiento() {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  doc.setFontSize(12);
+  doc.text("Productos por Vencer", 10, 10);
+  let headers = ["Producto", "Laboratorio", "Precio", "Vencimiento"];
+  let rows = [];
+  const hoy = new Date();
+  JSON.parse(localStorage.getItem('productosYOFI') || '[]')
+    .map(p => ({ ...p, fechaObj: new Date(p.fecha) }))
+    .filter(p => ((p.fechaObj - hoy) / (1000 * 60 * 60 * 24) / 30) >= 0 && ((p.fechaObj - hoy) / (1000 * 60 * 60 * 24) / 30) < 3)
+    .sort((a, b) => a.fechaObj - b.fechaObj)
+    .forEach(p => rows.push([p.producto, p.laboratorio, p.precio.toString(), p.fecha]));
+  doc.autoTable({ head: [headers], body: rows, startY: 20, theme: 'grid' });
+  doc.save("vencimientos_proximos.pdf");
+}
+
+cargarDatos();
+</script>
+</body>
+</html>
